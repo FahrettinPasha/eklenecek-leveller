@@ -1844,45 +1844,106 @@ class Platform:
     def draw(self, surf: pygame.Surface, cam_x: float, tick: float):
         sx = screen_x(self.wx, cam_x)
         if sx + self.w < -20 or sx > SW + 20: return
-        r = pygame.Rect(sx, int(self.wy), self.w, self.h)
+        sy  = int(self.wy)
+        bot = sy + self.h          # alt kenar y
+        FLOOR_Y = 600              # görsel zemin referansı (asıl zemin 570+30=600)
 
-        # Base platform
-        pygame.draw.rect(surf, D_STEEL, r)
-        # Inner shadow
-        if self.h > 12:
-            pygame.draw.rect(surf, SOOT, (r.x+2, r.y+4, r.w-4, r.h-6))
+        # ── Destek sistemi: yüksekliğe göre kirişler veya zincirler ──────────
+        leg_h = FLOOR_Y - bot      # platformun zemine olan mesafesi
+
+        if leg_h > 8:
+            if leg_h <= 60:
+                # Kısa ayak — düz I-kiriş çifti
+                for lx in (sx + 10, sx + self.w - 10):
+                    # Kiriş gövdesi
+                    pygame.draw.rect(surf, D_STEEL,  (lx - 4, bot, 8, leg_h))
+                    pygame.draw.rect(surf, SOOT,     (lx - 2, bot + 2, 4, leg_h - 4))
+                    # Alt taban plakası
+                    pygame.draw.rect(surf, STEEL,    (lx - 8, FLOOR_Y - 5, 16, 5))
+                # Yatay takviye kirişi (orta boy platformlarda)
+                if self.w > 100:
+                    brace_y = bot + leg_h // 2
+                    pygame.draw.line(surf, D_STEEL,
+                                     (sx + 10, brace_y), (sx + self.w - 10, brace_y), 3)
+
+            else:
+                # Uzun ayak — kafes (truss) yapısı
+                n_legs  = max(2, self.w // 90)
+                spacing = (self.w - 20) / max(1, n_legs - 1)
+                for i in range(n_legs):
+                    lx = sx + 10 + int(i * spacing)
+                    # Dikey kiriş
+                    pygame.draw.rect(surf, D_STEEL,  (lx - 5, bot, 10, leg_h))
+                    pygame.draw.rect(surf, SOOT,     (lx - 3, bot + 3, 6, leg_h - 6))
+                    # Alt taban flanşı
+                    pygame.draw.rect(surf, STEEL,    (lx - 10, FLOOR_Y - 6, 20, 6))
+                    # Tavan flanşı (platform altına)
+                    pygame.draw.rect(surf, STEEL,    (lx - 10, bot - 1, 20, 4))
+
+                # Çapraz takviyeler (X-brace)
+                if n_legs >= 2:
+                    for i in range(n_legs - 1):
+                        x1 = sx + 10 + int(i * spacing)
+                        x2 = sx + 10 + int((i + 1) * spacing)
+                        mid_y = bot + leg_h // 2
+                        pygame.draw.line(surf, (50, 52, 58), (x1, bot),    (x2, mid_y), 2)
+                        pygame.draw.line(surf, (50, 52, 58), (x2, bot),    (x1, mid_y), 2)
+                        pygame.draw.line(surf, (50, 52, 58), (x1, mid_y),  (x2, FLOOR_Y), 2)
+                        pygame.draw.line(surf, (50, 52, 58), (x2, mid_y),  (x1, FLOOR_Y), 2)
+
+                # Yatay ana kiriş (alt)
+                pygame.draw.rect(surf, STEEL, (sx + 6, FLOOR_Y - 6, self.w - 12, 6))
+
+        # ── Platform gövdesi ──────────────────────────────────────────────────
+        # Dış çerçeve
+        pygame.draw.rect(surf, STEEL,   (sx, sy, self.w, self.h))
+        # İç dolgu
+        pygame.draw.rect(surf, D_STEEL, (sx + 2, sy + 2, self.w - 4, self.h - 4))
+        # Alt gölge şeridi — platform kalınlık hissi
+        pygame.draw.rect(surf, SOOT,    (sx + 2, sy + self.h - 5, self.w - 4, 4))
 
         if self.conveyor:
-            # Animated diagonal stripe pattern
+            # Animasyonlu diyagonal şeritler
             stripe_period = 32
             anim = int(tick * self.conv_speed * self.conv_dir * 0.3) % stripe_period
-            surf.set_clip(r)
+            surf.set_clip(pygame.Rect(sx, sy, self.w, self.h - 4))
             for i in range(-2, self.w // stripe_period + 3):
                 bx = sx + i * stripe_period + anim
-                pts = [(bx,      int(self.wy)),
-                       (bx+16,   int(self.wy)),
-                       (bx+16-8, int(self.wy)+self.h),
-                       (bx-8,    int(self.wy)+self.h)]
-                pygame.draw.polygon(surf, (55, 50, 38), pts)
+                pts = [(bx,      sy),
+                       (bx + 16, sy),
+                       (bx + 8,  sy + self.h - 4),
+                       (bx - 8,  sy + self.h - 4)]
+                pygame.draw.polygon(surf, (62, 56, 40), pts)
             surf.set_clip(None)
-            # Direction arrow every 60px
-            arrows = self.w // 60
+
+            # Yön okları
+            arrows = max(1, self.w // 60)
             for i in range(arrows):
                 ax = sx + 30 + i * 60
-                ay = int(self.wy) + self.h // 2
-                dw = 8 * self.conv_dir
+                ay = sy + self.h // 2
+                dw = 10 * self.conv_dir
                 pygame.draw.polygon(surf, SULFUR,
-                    [(ax, ay-3), (ax+dw, ay), (ax, ay+3)])
-            # Glowing top edge
-            pygame.draw.line(surf, NEON_ORG, (sx, int(self.wy)), (sx+self.w, int(self.wy)), 2)
-        else:
-            # Steel top edge
-            pygame.draw.line(surf, LT_STEEL, (sx, int(self.wy)), (sx+self.w, int(self.wy)), 2)
+                    [(ax, ay - 4), (ax + dw, ay), (ax, ay + 4)])
 
-        # Side rivets
-        for i in range(0, self.h, 12):
-            pygame.draw.circle(surf, STEEL, (sx+4, int(self.wy)+i+4), 2)
-            pygame.draw.circle(surf, STEEL, (sx+self.w-4, int(self.wy)+i+4), 2)
+            # Parlak üst kenar (turuncu konveyör ışığı)
+            pygame.draw.rect(surf, NEON_ORG, (sx, sy, self.w, 3))
+            pygame.draw.rect(surf, (255, 200, 80), (sx + 1, sy, self.w - 2, 1))
+        else:
+            # Parlak çelik üst yüzey
+            pygame.draw.rect(surf, LT_STEEL, (sx, sy, self.w, 3))
+            pygame.draw.rect(surf, WHITE,    (sx + 2, sy, self.w - 4, 1))
+
+        # Kenar çerçeve çizgisi
+        pygame.draw.rect(surf, STEEL, (sx, sy, self.w, self.h), 1)
+
+        # Perçin noktaları — sol/sağ kenar
+        for ry in range(sy + 5, sy + self.h - 2, 10):
+            pygame.draw.circle(surf, LT_STEEL, (sx + 4,          ry), 2)
+            pygame.draw.circle(surf, LT_STEEL, (sx + self.w - 4, ry), 2)
+
+        # Üst yüzey perçinleri (yatay)
+        for rx in range(sx + 14, sx + self.w - 10, max(20, self.w // 6)):
+            pygame.draw.circle(surf, STEEL, (rx, sy + 2), 2)
 
 
 # ══════════════════════════════════════════════════════════════════════════
@@ -2479,63 +2540,293 @@ class HUD:
 # ══════════════════════════════════════════════════════════════════════════
 def _build_geometry() -> Tuple[list, list, list]:
     """
+    El yapımı bölge tasarımı — her bölgenin kendine özgü ritmi var.
+    Fizik referansı:
+      JUMP_VY=-620  → tek zıplama maks yüksekliği ≈ 135 px
+      DJUMP_VY=-540 → çift zıplama ek yüksekliği  ≈ 103 px  (toplam ≈ 238 px)
+      WALK_SPEED=230 → tek zıplama yatay mesafesi ≈ 200 px
+      Güvenli zemin boşluğu: ≤ 175 px yürüyerek, ≤ 250 px dash ile
     Returns (platforms, crushers, laser_scanners).
-    Deterministic via LEVEL_SEED.
     """
-    rng = random.Random(LEVEL_SEED)
-
     platforms: List[Platform] = []
     crushers:  List[Crusher]  = []
     lasers:    List[LaserScanner] = []
 
-    # ── Ground floor conveyor segments ────────────────────────────────────
-    GROUND_Y = 570
-    x = 0.0
-    while x < WORLD_W - 400:
-        w = rng.randint(180, 420)
-        conv = rng.random() < 0.80    # 80% conveyor
-        platforms.append(Platform(x, GROUND_Y, w, 30,
-                                  conveyor=conv, conv_dir=1,
-                                  conv_speed=CONV_PUSH))
-        gap = rng.randint(28, 72)
-        x += w + gap
+    G  = 570   # GROUND_Y  — zemin
+    M  = 440   # MID_Y     — orta (130px zemin üstü  → tek zıplama ile ulaşılabilir)
+    MH = 360   # MID_HIGH  — üst-orta (210px → çift zıplama gerekli)
+    H  = 295   # HIGH_Y    — yüksek  (275px → çift zıplama + iyi pozisyon)
 
-    # ── Mid platforms (y ~ 430) ───────────────────────────────────────────
-    x = 320.0
-    while x < WORLD_W - 600:
-        w = rng.randint(110, 260)
-        conv = rng.random() < 0.40
-        platforms.append(Platform(x, 430, w, 22,
-                                  conveyor=conv, conv_dir=-1,
-                                  conv_speed=CONV_PUSH * 0.7))
-        x += w + rng.randint(100, 280)
+    CS = CONV_PUSH          # konveyör hızı: 160
+    CH = CONV_PUSH * 0.55   # yavaş konveyör: ~88
 
-    # ── High platforms (y ~ 300, Phase 2+) ───────────────────────────────
-    x = 2400.0
-    while x < WORLD_W - 800:
-        w = rng.randint(90, 200)
-        platforms.append(Platform(x, 300, w, 20, conveyor=False))
-        x += w + rng.randint(160, 360)
+    def gp(x, y, w, conv=False, cd=1, cs=CS, h=26):
+        """Platform ekle (x=sol kenar, y=üst yüzey)."""
+        platforms.append(Platform(x, y, w, h, conveyor=conv,
+                                  conv_dir=cd, conv_speed=cs))
 
-    # ── Crushers (Phase 1 start: cam_x > 600) ────────────────────────────
-    cx = 700.0
-    while cx < WORLD_W - 1200:
-        target_y = rng.choice([GROUND_Y, 430, 300]) + 15   # just above platform
-        period   = rng.uniform(2.2, 5.0)
-        offset   = rng.uniform(0, period)
-        crushers.append(Crusher(cx, target_y, period, offset))
-        cx += rng.randint(380, 720)
+    def cr(x, y, period, offset=0.0):
+        """Crusher ekle."""
+        crushers.append(Crusher(x, y + 18, period, offset))
 
-    # ── Laser scanners (Phase 3: cam_x > 4700) ───────────────────────────
-    lx = 5200.0
-    while lx < WORLD_W - 1500:
-        y_center = rng.uniform(280, 490)
-        y_range  = rng.uniform(30, 90)
-        speed    = rng.uniform(1.2, 2.8)
-        lw       = rng.uniform(300, 700)
-        phase_off = rng.uniform(0, math.tau)
-        lasers.append(LaserScanner(lx, lw, y_center, y_range, speed, phase_off))
-        lx += rng.randint(400, 800)
+    def ls(x, w, yc, yr, spd, ph=0.0):
+        """LaserScanner ekle."""
+        lasers.append(LaserScanner(x, w, yc, yr, spd, ph))
+
+    # ══════════════════════════════════════════════════════════════════
+    # BÖLGE 0 — HAMMADDE GİRİŞİ  (x: 0 – 2100)
+    # Tutorial: geniş platformlar, küçük boşluklar, konveyörü tanıt
+    # ══════════════════════════════════════════════════════════════════
+
+    # Zemin — geniş, neredeyse kesintisiz başlangıç
+    gp(   0, G, 380)                         # başlangıç yeri
+    gp( 420, G, 300, conv=True,  cd=1)       # ilk konveyör
+    gp( 760, G, 260)
+    gp(1060, G, 320, conv=True,  cd=1)
+    gp(1430, G, 240)
+    gp(1720, G, 300, conv=True,  cd=1)
+
+    # Orta — birkaç basamak, öğretici
+    gp( 480, M, 180)                         # zemin konveyörünün üstü
+    gp( 820, M, 140, conv=True,  cd=-1, cs=CH)
+    gp(1120, M, 160)
+    gp(1490, M, 140, conv=True,  cd=1,  cs=CH)
+    gp(1820, M, 120)
+
+    # Yüksek — sadece birkaç tane, bonus alan
+    gp( 900, H, 110)
+    gp(1550, H, 100)
+
+    # ══════════════════════════════════════════════════════════════════
+    # BÖLGE 1 — BİRİNCİL İŞLEM  (x: 2100 – 4700)
+    # Crusher'lar devreye girer, orta platformlar zorunlu hale gelir
+    # ══════════════════════════════════════════════════════════════════
+
+    # Zemin — daha kısa, boşluklar artar
+    gp(2100, G, 220)
+    gp(2380, G, 180, conv=True,  cd=1)
+    gp(2620, G, 200)
+    gp(2880, G, 160, conv=True,  cd=1)
+    gp(3110, G, 220)
+    gp(3400, G, 160, conv=True,  cd=-1)     # ters konveyör — dikkat!
+    gp(3640, G, 200)
+    gp(3910, G, 180, conv=True,  cd=1)
+    gp(4170, G, 200)
+    gp(4450, G, 160, conv=True,  cd=1)
+
+    # Orta — konveyörler karıştırmaya başlar
+    gp(2200, M, 160, conv=True,  cd=-1, cs=CH)
+    gp(2500, M, 140)
+    gp(2750, M, 160, conv=True,  cd=1,  cs=CH)
+    gp(3010, M, 120)
+    gp(3250, M, 160, conv=True,  cd=-1, cs=CH)
+    gp(3530, M, 140)
+    gp(3770, M, 160)
+    gp(4060, M, 120, conv=True,  cd=1,  cs=CH)
+    gp(4280, M, 160)
+    gp(4540, M, 120)
+
+    # Yüksek — ara hedefler
+    gp(2580, H, 110)
+    gp(3000, H, 100)
+    gp(3500, H, 110)
+    gp(4000, H, 100)
+    gp(4520, H, 110)
+
+    # Crusher'lar — yavaş, telegraflı (Bölge 1 başlangıcı)
+    cr(2470, G,  3.8, 0.0)
+    cr(2800, M,  3.2, 1.0)
+    cr(3180, G,  3.5, 0.5)
+    cr(3620, M,  3.0, 1.5)
+    cr(3990, G,  3.2, 0.8)
+    cr(4330, M,  2.8, 0.3)
+    cr(4600, G,  3.0, 1.2)
+
+    # ══════════════════════════════════════════════════════════════════
+    # BÖLGE 2 — MONTAJ HATTI  (x: 4700 – 7400)
+    # Çok katmanlı oynanış — merdiven desenleri, yoğun konveyörler
+    # ══════════════════════════════════════════════════════════════════
+
+    # Zemin — seyrekleşir, yüksek platformları zorunlu kılar
+    gp(4700, G, 180, conv=True,  cd=1)
+    gp(4960, G, 140)
+    gp(5200, G, 160, conv=True,  cd=-1)
+    gp(5460, G, 140)
+    gp(5720, G, 180, conv=True,  cd=1)
+    gp(6000, G, 120)
+    gp(6240, G, 160, conv=True,  cd=-1)
+    gp(6520, G, 140)
+    gp(6790, G, 180, conv=True,  cd=1)
+    gp(7080, G, 140)
+    gp(7260, G, 100)
+
+    # Orta — yoğun, konveyörler birbirinin tersine
+    gp(4830, M, 150, conv=True,  cd=-1, cs=CH)
+    gp(5060, M, 120)
+    gp(5290, M, 140, conv=True,  cd=1,  cs=CH)
+    gp(5550, M, 120)
+    gp(5790, M, 150, conv=True,  cd=-1, cs=CH)
+    gp(6050, M, 110)
+    gp(6280, M, 140, conv=True,  cd=1,  cs=CH)
+    gp(6560, M, 120)
+    gp(6750, M, 150, conv=True,  cd=-1, cs=CH)
+    gp(7000, M, 120)
+    gp(7200, M, 130, conv=True,  cd=1,  cs=CH)
+
+    # Üst-Orta — köprü platformları (çift zıplama ile ulaşılır)
+    gp(4900, MH, 100)
+    gp(5160, MH, 110)
+    gp(5480, MH,  90, conv=True, cd=1,  cs=CH)
+    gp(5820, MH, 100)
+    gp(6110, MH,  90)
+    gp(6400, MH, 100, conv=True, cd=-1, cs=CH)
+    gp(6720, MH,  90)
+    gp(7030, MH, 100)
+    gp(7240, MH,  90)
+
+    # Yüksek — uzun merdiven dizileri
+    gp(5000, H, 100)
+    gp(5270, H,  90)
+    gp(5570, H, 100)
+    gp(5910, H,  90)
+    gp(6220, H, 100)
+    gp(6530, H,  90)
+    gp(6850, H, 100)
+    gp(7120, H,  90)
+    gp(7310, H, 100)
+
+    # Crusher'lar — hızlanıyor
+    cr(4970, G,  2.8, 0.0)
+    cr(5220, M,  2.5, 0.6)
+    cr(5540, G,  2.6, 1.2)
+    cr(5830, MH, 2.4, 0.4)
+    cr(6120, G,  2.2, 1.0)
+    cr(6450, M,  2.5, 0.7)
+    cr(6800, G,  2.0, 0.2)
+    cr(7070, M,  2.3, 1.4)
+    cr(7290, G,  2.1, 0.9)
+
+    # ══════════════════════════════════════════════════════════════════
+    # BÖLGE 3 — KALİTE KONTROL  (x: 7400 – 10000)
+    # Dar platformlar, büyük boşluklar, lazer barikatları aktif
+    # ══════════════════════════════════════════════════════════════════
+
+    # Zemin — dar ve seyrek, güvenli değil
+    gp(7400, G, 160, conv=True,  cd=1)
+    gp(7660, G, 120)
+    gp(7910, G, 140, conv=True,  cd=-1)
+    gp(8180, G, 110)
+    gp(8440, G, 140, conv=True,  cd=1)
+    gp(8730, G, 110)
+    gp(9010, G, 130, conv=True,  cd=-1)
+    gp(9300, G, 110)
+    gp(9580, G, 130, conv=True,  cd=1)
+    gp(9870, G, 100)
+
+    # Orta — dar, hassas zıplama
+    gp(7520, M, 110)
+    gp(7770, M, 100, conv=True,  cd=-1, cs=CH)
+    gp(8040, M, 110)
+    gp(8310, M,  90, conv=True,  cd=1,  cs=CH)
+    gp(8590, M, 110)
+    gp(8880, M,  90)
+    gp(9140, M, 110, conv=True,  cd=-1, cs=CH)
+    gp(9450, M,  90)
+    gp(9730, M, 110, conv=True,  cd=1,  cs=CH)
+    gp(9970, M,  90)
+
+    # Üst-Orta
+    gp(7640, MH,  90)
+    gp(7970, MH,  80)
+    gp(8290, MH,  90)
+    gp(8620, MH,  80)
+    gp(8970, MH,  90)
+    gp(9310, MH,  80)
+    gp(9660, MH,  90)
+    gp(9960, MH,  80)
+
+    # Yüksek
+    gp(7760, H,  90)
+    gp(8110, H,  80)
+    gp(8470, H,  90)
+    gp(8820, H,  80)
+    gp(9170, H,  90)
+    gp(9520, H,  80)
+    gp(9840, H,  90)
+
+    # Crusher'lar — hızlı ve yoğun
+    cr(7660, G,  2.0, 0.0)
+    cr(7920, M,  2.2, 0.5)
+    cr(8250, G,  1.8, 1.0)
+    cr(8510, MH, 2.0, 0.3)
+    cr(8810, G,  1.7, 1.4)
+    cr(9080, M,  1.9, 0.8)
+    cr(9390, G,  1.6, 0.2)
+    cr(9670, M,  1.8, 1.1)
+    cr(9920, G,  1.7, 0.6)
+
+    # Lazerler — Bölge 3'ten itibaren aktif
+    ls(7600,  520, 415, 65, 1.8, 0.0)
+    ls(8050,  480, 360, 70, 2.1, 1.3)
+    ls(8500,  540, 430, 60, 1.6, 0.7)
+    ls(9000,  500, 385, 75, 2.3, 1.9)
+    ls(9500,  520, 405, 65, 1.9, 0.4)
+    ls(9850,  480, 350, 80, 2.0, 1.1)
+
+    # ══════════════════════════════════════════════════════════════════
+    # BÖLGE 4 — SEVKİYAT / ÇIKIŞ  (x: 10000 – 12500)
+    # Final sprint — tüm tehlikeler bir arada, çıkış kapısına koş
+    # ══════════════════════════════════════════════════════════════════
+
+    # Zemin
+    gp(10000, G, 180, conv=True,  cd=1)
+    gp(10270, G, 120)
+    gp(10510, G, 160, conv=True,  cd=-1)
+    gp(10790, G, 120)
+    gp(11050, G, 180, conv=True,  cd=1)
+    gp(11280, G, 400)                        # çıkış kapısı platformu — geniş
+    gp(11750, G, 160, conv=True,  cd=1)
+    gp(12020, G, 140)
+    gp(12270, G, 180, conv=True,  cd=1)
+
+    # Orta
+    gp(10100, M, 120, conv=True,  cd=-1, cs=CH)
+    gp(10360, M, 100)
+    gp(10600, M, 120, conv=True,  cd=1,  cs=CH)
+    gp(10890, M, 100)
+    gp(11160, M, 120)
+    gp(11520, M, 100, conv=True,  cd=-1, cs=CH)
+    gp(11810, M, 120)
+    gp(12080, M, 100)
+    gp(12330, M, 120)
+
+    # Yüksek
+    gp(10220, H, 100)
+    gp(10510, H,  90)
+    gp(10800, H, 100)
+    gp(11100, H,  90)
+    gp(11440, H, 100)
+    gp(11780, H,  90)
+    gp(12100, H, 100)
+    gp(12380, H,  90)
+
+    # Crusher'lar — en hızlı
+    cr(10150, G,  1.6, 0.0)
+    cr(10430, M,  1.8, 0.4)
+    cr(10720, G,  1.5, 0.9)
+    cr(11010, M,  1.7, 0.2)
+    cr(11450, G,  1.5, 1.3)
+    cr(11780, M,  1.6, 0.7)
+    cr(12100, G,  1.4, 0.5)
+    cr(12400, M,  1.5, 1.0)
+
+    # Lazerler — Bölge 4 yoğun
+    ls(10250, 520, 380, 80, 2.5, 0.0)
+    ls(10700, 480, 340, 90, 2.8, 0.9)
+    ls(11100, 540, 410, 70, 2.3, 1.6)
+    ls(11600, 500, 360, 85, 3.0, 0.5)
+    ls(12000, 480, 390, 75, 2.6, 1.3)
+    ls(12350, 520, 370, 80, 2.8, 0.2)
 
     return platforms, crushers, lasers
 
